@@ -15,11 +15,10 @@ from datetime import datetime
 # ================================================
 # ✏️  EDIT THESE BEFORE RUNNING
 # ================================================
-TELEGRAM_BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"   # from @BotFather
-TELEGRAM_CHAT_ID   = "YOUR_CHAT_ID_HERE"     # your chat ID
-
-UPPER_BREAKEVEN = 88000   # ← your upper breakeven price (USDT)
-LOWER_BREAKEVEN = 62000   # ← your lower breakeven price (USDT)
+TELEGRAM_BOT_TOKEN = "8498712330:AAEOvwG2T_cNAWSxMHFK8YIVdbl6UvtgMhI"   # from @BotFather
+TELEGRAM_CHAT_ID   = "8498712330"     # your chat ID
+UPPER_BREAKEVEN = 81600   # ← your upper breakeven price (USDT)
+LOWER_BREAKEVEN = 73000   # ← your lower breakeven price (USDT)
 
 CHECK_INTERVAL_SECONDS = 30   # check every 30 seconds
 # ================================================
