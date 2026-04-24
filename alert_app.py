@@ -25,11 +25,22 @@ def log(msg):
         state["log"] = state["log"][:50]
 
 def get_price():
-    try:
-        r = requests.get("https://api.coinbase.com/v2/prices/BTC-USD/spot", timeout=10)
-        return float(r.json()["data"]["amount"])
-    except:
-        return None
+    apis = [
+        ("https://api.coinbase.com/v2/prices/BTC-USD/spot", lambda r: float(r.json()["data"]["amount"])),
+        ("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd", lambda r: float(r.json()["bitcoin"]["usd"])),
+        ("https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT", lambda r: float(r.json()["price"])),
+        ("https://mempool.space/api/v1/prices", lambda r: float(r.json()["USD"])),
+    ]
+    for url, parse in apis:
+        try:
+            r = requests.get(url, timeout=10)
+            price = parse(r)
+            if price > 0:
+                lg(f"Price fetched from: {url[:30]}")
+                return price
+        except:
+            continue
+    return None
 
 def send_tg(msg, repeat=3):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
