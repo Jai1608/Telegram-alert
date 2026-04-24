@@ -3,8 +3,8 @@ from datetime import datetime
 
 TOKEN = os.environ["TOKEN"]
 CHAT  = os.environ["CHAT"]
-UPPER = 81600.0
-LOWER = 73400.0
+UPPER = 78260.0
+LOWER = 78200.0
 
 def get_price():
     r = requests.get(
