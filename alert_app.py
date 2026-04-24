@@ -26,8 +26,8 @@ def log(msg):
 
 def get_price():
     try:
-        r = requests.get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd", timeout=10)
-        return float(r.json()["bitcoin"]["usd"])
+        r = requests.get("https://api.coinbase.com/v2/prices/BTC-USD/spot", timeout=10)
+        return float(r.json()["data"]["amount"])
     except:
         return None
 
