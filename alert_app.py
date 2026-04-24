@@ -24,27 +24,26 @@ def tg(msg,n=3):
 
 def get_price():
     try:
-        r=requests.get("https://api.kraken.com/0/public/Ticker?pair=XBTUSD",timeout=15,headers={"User-Agent":"Mozilla/5.0"})
-        p=float(r.json()["result"]["XXBTZUSD"]["c"][0])
-        lg(f"Kraken OK: ${p:,.0f}")
+        r = requests.get(
+            "https://api.india.delta.exchange/v2/tickers/BTCUSD",
+            timeout=15
+        )
+        p = float(r.json()["result"]["mark_price"])
+        lg(f"Delta OK: ${p:,.0f}")
         return p
     except Exception as e:
-        lg(f"Kraken fail:{e}")
+        lg(f"Delta fail: {e}")
     try:
-        r=requests.get("https://api-pub.bitfinex.com/v2/ticker/tBTCUSD",timeout=15,headers={"User-Agent":"Mozilla/5.0"})
-        p=float(r.json()[6])
-        lg(f"Bitfinex OK: ${p:,.0f}")
+        r = requests.get(
+            "https://min-api.cryptocompare.com/data/price?fsym=BTC&tsyms=USD",
+            timeout=15
+        )
+        p = float(r.json()["USD"])
+        lg(f"CryptoCompare OK: ${p:,.0f}")
         return p
     except Exception as e:
-        lg(f"Bitfinex fail:{e}")
-    try:
-        r=requests.get("https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT",timeout=15,headers={"User-Agent":"Mozilla/5.0"})
-        p=float(r.json()["price"])
-        lg(f"Binance OK: ${p:,.0f}")
-        return p
-    except Exception as e:
-        lg(f"Binance fail:{e}")
-    lg("ALL APIs FAILED")
+        lg(f"CryptoCompare fail: {e}")
+    lg("ALL FAILED")
     return None
 
 def monitor():
