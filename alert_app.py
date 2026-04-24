@@ -1,155 +1,118 @@
-import os, threading, time, requests
+import os,threading,time,requests
 from datetime import datetime
-from flask import Flask, jsonify, request
+from flask import Flask,request as freq
 
-app = Flask(__name__)
+app=Flask(__name__)
+TOKEN=os.environ.get("TELEGRAM_BOT_TOKEN","")
+CHAT=os.environ.get("TELEGRAM_CHAT_ID","")
+state={"upper":float(os.environ.get("UPPER_BE","999999")),"lower":float(os.environ.get("LOWER_BE","1")),"price":0.0,"au":False,"al":False,"last":"Never","log":[]}
 
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
-state = {
-    "upper_be": float(os.environ.get("UPPER_BE", "99999999")),
-    "lower_be": float(os.environ.get("LOWER_BE", "0")),
-    "current_price": 0.0,
-    "alert_upper": False,
-    "alert_lower": False,
-    "last_check": "Never",
-    "log": []
-}
+def lg(m):
+    e=f"[{datetime.now().strftime('%H:%M:%S')}] {m}"
+    print(e,flush=True)
+    state["log"].insert(0,e)
+    state["log"]=state["log"][:40]
 
-def log(msg):
-    ts = datetime.now().strftime("%H:%M:%S")
-    entry = f"[{ts}] {msg}"
-    print(entry)
-    state["log"].insert(0, entry)
-    if len(state["log"]) > 50:
-        state["log"] = state["log"][:50]
+def tg(msg,n=3):
+    for i in range(n):
+        try:
+            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage",json={"chat_id":CHAT,"text":msg,"parse_mode":"HTML"},timeout=10)
+            lg(f"TG sent {i+1}/{n}")
+        except Exception as e:
+            lg(f"TG error:{e}")
+        if i<n-1:time.sleep(3)
 
 def get_price():
-    apis = [
-        ("https://api.coinbase.com/v2/prices/BTC-USD/spot", lambda r: float(r.json()["data"]["amount"])),
-        ("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd", lambda r: float(r.json()["bitcoin"]["usd"])),
-        ("https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT", lambda r: float(r.json()["price"])),
-        ("https://mempool.space/api/v1/prices", lambda r: float(r.json()["USD"])),
-    ]
-    for url, parse in apis:
-        try:
-            r = requests.get(url, timeout=10)
-            price = parse(r)
-            if price > 0:
-                lg(f"Price fetched from: {url[:30]}")
-                return price
-        except:
-            continue
+    try:
+        r=requests.get("https://api.kraken.com/0/public/Ticker?pair=XBTUSD",timeout=15,headers={"User-Agent":"Mozilla/5.0"})
+        p=float(r.json()["result"]["XXBTZUSD"]["c"][0])
+        lg(f"Kraken OK: ${p:,.0f}")
+        return p
+    except Exception as e:
+        lg(f"Kraken fail:{e}")
+    try:
+        r=requests.get("https://api-pub.bitfinex.com/v2/ticker/tBTCUSD",timeout=15,headers={"User-Agent":"Mozilla/5.0"})
+        p=float(r.json()[6])
+        lg(f"Bitfinex OK: ${p:,.0f}")
+        return p
+    except Exception as e:
+        lg(f"Bitfinex fail:{e}")
+    try:
+        r=requests.get("https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT",timeout=15,headers={"User-Agent":"Mozilla/5.0"})
+        p=float(r.json()["price"])
+        lg(f"Binance OK: ${p:,.0f}")
+        return p
+    except Exception as e:
+        lg(f"Binance fail:{e}")
+    lg("ALL APIs FAILED")
     return None
 
-def send_tg(msg, repeat=3):
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        return
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    for i in range(repeat):
-        try:
-            requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": "HTML"}, timeout=10)
-        except:
-            pass
-        if i < repeat - 1:
-            time.sleep(3)
-
 def monitor():
-    log("Monitor started")
-    send_tg(
-        f"✅ <b>JK BTC Alert LIVE on Render</b>\n\n"
-        f"📈 Upper BE: <b>${state['upper_be']:,.0f}</b>\n"
-        f"📉 Lower BE: <b>${state['lower_be']:,.0f}</b>\n\n"
-        f"Monitoring 24/7. Will alert anytime BTC breaks out 🙏",
-        repeat=1
-    )
+    lg("Monitor thread started")
+    tg(f"✅ <b>JK BTC Alert LIVE</b>\n📈 Upper: ${state['upper']:,.0f}\n📉 Lower: ${state['lower']:,.0f}\nMonitoring 24/7 🙏",n=1)
     while True:
-        price = get_price()
-        if price:
-            state["current_price"] = price
-            state["last_check"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            upper = state["upper_be"]
-            lower = state["lower_be"]
-            log(f"BTC: ${price:,.0f} | Upper: ${upper:,.0f} | Lower: ${lower:,.0f}")
-
-            if price >= upper and not state["alert_upper"]:
-                log(f"🔴 UPPER BREACHED! ${price:,.0f}")
-                send_tg(
-                    f"🔴🔴🔴 <b>MACHA WAKE UP! UPPER BE CROSSED!</b> 🔴🔴🔴\n\n"
-                    f"⚡ <b>BTC NOW: ${price:,.0f}</b>\n"
-                    f"📈 Your Upper BE: ${upper:,.0f}\n\n"
-                    f"🛠 Open Delta Exchange → Add adjustment NOW!\n"
-                    f"⏰ {datetime.now().strftime('%d %b %Y, %I:%M %p')}",
-                    repeat=3
-                )
-                state["alert_upper"] = True
-
-            elif price <= lower and not state["alert_lower"]:
-                log(f"🔵 LOWER BREACHED! ${price:,.0f}")
-                send_tg(
-                    f"🔵🔵🔵 <b>MACHA WAKE UP! LOWER BE CROSSED!</b> 🔵🔵🔵\n\n"
-                    f"⚡ <b>BTC NOW: ${price:,.0f}</b>\n"
-                    f"📉 Your Lower BE: ${lower:,.0f}\n\n"
-                    f"🛠 Open Delta Exchange → Add adjustment NOW!\n"
-                    f"⏰ {datetime.now().strftime('%d %b %Y, %I:%M %p')}",
-                    repeat=3
-                )
-                state["alert_lower"] = True
-
-            elif price < (upper * 0.99) and state["alert_upper"]:
-                state["alert_upper"] = False
-                send_tg(f"✅ BTC back below upper BE. Price: ${price:,.0f}", repeat=1)
-
-            elif price > (lower * 1.01) and state["alert_lower"]:
-                state["alert_lower"] = False
-                send_tg(f"✅ BTC back above lower BE. Price: ${price:,.0f}", repeat=1)
-
+        try:
+            p=get_price()
+            if p and p>0:
+                state["price"]=p
+                state["last"]=datetime.now().strftime("%H:%M:%S")
+                u,l=state["upper"],state["lower"]
+                if p>=u and not state["au"]:
+                    tg(f"🔴🔴🔴 <b>MACHA WAKE UP! UPPER HIT!</b>\n⚡ BTC: ${p:,.0f}\nUpper BE: ${u:,.0f}\n🛠 Add adjustment NOW!",n=3)
+                    state["au"]=True
+                elif p<=l and not state["al"]:
+                    tg(f"🔵🔵🔵 <b>MACHA WAKE UP! LOWER HIT!</b>\n⚡ BTC: ${p:,.0f}\nLower BE: ${l:,.0f}\n🛠 Add adjustment NOW!",n=3)
+                    state["al"]=True
+                elif p<u*0.99 and state["au"]:
+                    state["au"]=False
+                    tg(f"✅ Recovered below upper. BTC: ${p:,.0f}",n=1)
+                elif p>l*1.01 and state["al"]:
+                    state["al"]=False
+                    tg(f"✅ Recovered above lower. BTC: ${p:,.0f}",n=1)
+        except Exception as e:
+            lg(f"Loop error:{e}")
         time.sleep(30)
 
 @app.route("/")
 def home():
-    p = state["current_price"]
-    upper = state["upper_be"]
-    lower = state["lower_be"]
-    log_html = "".join(f'<div style="padding:4px 0;border-bottom:1px solid #1c2138;font-size:12px;color:#a0a9bf;">{l}</div>' for l in state["log"][:20])
-    return f"""<!DOCTYPE html><html><head><meta charset="UTF-8"/>
-    <meta http-equiv="refresh" content="30"/>
-    <title>JK BTC Alert</title>
-    <style>body{{font-family:sans-serif;background:#0a0e1a;color:#fff;padding:24px;}}
-    .card{{background:#161a2b;border:1px solid #ffffff14;border-radius:12px;padding:20px;margin:12px 0;}}
-    .green{{color:#00d395;}}.red{{color:#ff4d4d;}}.gold{{color:#f7931a;}}
-    input{{background:#0a0e1a;border:1px solid #ffffff20;border-radius:8px;padding:10px;color:#fff;font-size:16px;width:100%;margin:8px 0;}}
-    button{{background:#f7931a;color:#0a0e1a;border:none;padding:12px 24px;border-radius:8px;font-weight:700;font-size:15px;width:100%;cursor:pointer;margin-top:8px;}}
-    </style></head><body>
-    <h2>🚨 JK BTC Price Alert</h2>
-    <div class="card"><b>BTC Price:</b> <span class="gold">${p:,.0f}</span><br/>
-    <b>Upper BE:</b> <span class="{'red' if p>=upper else 'green'}">${upper:,.0f}</span><br/>
-    <b>Lower BE:</b> <span class="{'red' if p<=lower else 'green'}">${lower:,.0f}</span><br/>
-    <b>Last Check:</b> {state['last_check']}</div>
-    <div class="card"><b>✏️ Update Levels</b>
-    <form action="/update" method="POST">
-    <label>Upper BE ($)</label><input name="upper" value="{upper:.0f}"/>
-    <label>Lower BE ($)</label><input name="lower" value="{lower:.0f}"/>
-    <button type="submit">💾 Save & Update</button></form></div>
-    <div class="card"><b>📋 Log</b><br/>{log_html}</div>
-    <p style="color:#6b7280;font-size:12px;text-align:center;">Auto-refreshes every 30s</p>
-    </body></html>"""
+    p=state["price"]
+    u,l=state["upper"],state["lower"]
+    logs="".join(f'<div style="padding:4px 0;border-bottom:1px solid #333;font-size:12px;color:#aaa;">{x}</div>'for x in state["log"][:20])
+    return f"""<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta http-equiv="refresh" content="30"/><title>JK BTC Alert</title>
+<style>*{{margin:0;padding:0;box-sizing:border-box;}}body{{font-family:sans-serif;background:#0a0e1a;color:#fff;padding:20px;}}
+.c{{background:#161a2b;border:1px solid #ffffff14;border-radius:12px;padding:16px;margin:12px 0;}}
+.g{{color:#00d395;}}.r{{color:#ff4d4d;}}.gold{{color:#f7931a;font-size:22px;font-weight:700;}}
+input{{background:#0a0e1a;border:1px solid #ffffff20;border-radius:8px;padding:10px;color:#fff;font-size:16px;width:100%;margin:6px 0;}}
+button{{background:#f7931a;color:#0a0e1a;border:none;padding:12px;border-radius:8px;font-weight:700;width:100%;cursor:pointer;margin-top:6px;font-size:15px;}}
+</style></head><body>
+<h2 style="margin-bottom:16px;">🚨 JK BTC Alert</h2>
+<div class="c"><div class="gold">${p:,.0f}</div>
+<div style="margin-top:8px;font-size:14px;">Upper BE: <span class="{'r'if p>=u else'g'}">${u:,.0f}</span> &nbsp;|&nbsp; Lower BE: <span class="{'r'if p<=l else'g'}">${l:,.0f}</span></div>
+<div style="font-size:12px;color:#666;margin-top:4px;">Last: {state['last']}</div></div>
+<div class="c"><b>✏️ Update Levels</b>
+<form action="/update" method="POST">
+<label style="font-size:13px;color:#aaa;">Upper BE ($)</label><input name="upper" value="{u:.0f}"/>
+<label style="font-size:13px;color:#aaa;">Lower BE ($)</label><input name="lower" value="{l:.0f}"/>
+<button type="submit">💾 Save</button></form></div>
+<div class="c"><b>📋 Log</b><br/><br/>{logs}</div>
+<p style="color:#666;font-size:12px;text-align:center;margin-top:12px;">Auto-refreshes every 30s</p>
+</body></html>"""
 
-@app.route("/update", methods=["POST"])
+@app.route("/update",methods=["POST"])
 def update():
-    state["upper_be"] = float(request.form.get("upper", state["upper_be"]))
-    state["lower_be"] = float(request.form.get("lower", state["lower_be"]))
-    state["alert_upper"] = False
-    state["alert_lower"] = False
-    log(f"Levels updated: Upper ${state['upper_be']:,.0f} | Lower ${state['lower_be']:,.0f}")
-    send_tg(f"✏️ Levels updated\nUpper: ${state['upper_be']:,.0f}\nLower: ${state['lower_be']:,.0f}", repeat=1)
+    state["upper"]=float(freq.form.get("upper",state["upper"]))
+    state["lower"]=float(freq.form.get("lower",state["lower"]))
+    state["au"]=False
+    state["al"]=False
+    lg(f"Updated: Upper ${state['upper']:,.0f} | Lower ${state['lower']:,.0f}")
+    tg(f"✏️ Levels updated\nUpper: ${state['upper']:,.0f}\nLower: ${state['lower']:,.0f}",n=1)
     return home()
 
 @app.route("/ping")
 def ping():
     return "OK"
 
-threading.Thread(target=monitor, daemon=True).start()
+threading.Thread(target=monitor,daemon=True).start()
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+if __name__=="__main__":
+    app.run(host="0.0.0.0",port=int(os.environ.get("PORT",5000)))
